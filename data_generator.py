@@ -75,12 +75,13 @@ class NoisyLinearRegression:
         targets = self.evaluate(data, tasks, step)
 
         # targets[:, -1] = 0
-        data_true = torch.concat((data.view(self.batch_size, -1), targets[:, :-1]), dim=-1)
+        # data_true = torch.concat((data.view(self.batch_size, -1), targets[:, :-1]), dim=-1)
 
         # targets_true = torch.matmul(data, tasks)[:, -1, 0]
 
         # return data_true, targets_true.unsqueeze(-1)
-        return data_true, targets[:,-1].unsqueeze(-1)
+        # return data_true, targets[:,-1].unsqueeze(-1)
+        return data, targets
 
     @staticmethod
     def evaluate_oracle(data: torch.Tensor, tasks: torch.Tensor) -> torch.Tensor:
@@ -149,16 +150,13 @@ class NoisyLinearRegression_trf:
     def sample_batch(self, step: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         data, tasks = self.sample_data(step), self.sample_tasks(step)
         targets = self.evaluate(data, tasks, step)
-        # data_true = torch.concat([data, targets[:, :-1].unsqueeze(-1).expand(-1, -1, 8)], dim=1)
 
-        targets[:, -1] = 0
-        data_true = torch.concat((data, targets.unsqueeze(-1)), dim=-1)
+        data_true = torch.zeros([self.batch_size, self.n_points*2, self.n_dims+1])
+        for i in range(self.n_points):
+            data_true[:, i*2, :self.n_dims] = data[:, i, :]
+            data_true[:, i*2+1, self.n_dims] = targets[:, i]
 
-        # print(data_true.shape)
-        # print(data_true[:, :, -1])
-
-        targets_true = torch.matmul(data, tasks)[:, -1, 0]
-        return data_true, targets_true
+        return data_true, targets
 
     @staticmethod
     def evaluate_oracle(data: torch.Tensor, tasks: torch.Tensor) -> torch.Tensor:

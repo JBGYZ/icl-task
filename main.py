@@ -209,7 +209,7 @@ def main():
     print(device)  
 
     if args.network == "fcn":
-        model = MLP(input_dim=(args.n_dims + 1) * args.n_points - 1, 
+        model = MLP(input_dim=(args.n_dims + 1) * args.n_points, 
                     output_dim=args.output_dim,
                     n_hidden_layers=args.n_hidden_layers,
                     n_hidden_neurons=args.n_hidden_neurons,)
@@ -298,27 +298,41 @@ def main():
         newtasks.__post_init__()
 
     for step in range(args.max_iterations):
-        data_true, targets_true = noisyLinearRegression.sample_batch(step)
-        data_true, targets_true = data_true.to(device), targets_true.to(device)
-        optimizer.zero_grad()
-        outputs = model(data_true)
-        loss = loss_fn(outputs, targets_true)
-        loss.backward()
-        optimizer.step()
-        # lr_scheduler.step()
-        if step % 500 == 0:
-            print(f"Step {step} | Train Loss {loss.item()/8}")
-            writer.add_scalar("Loss/train", loss.item()/8, step)
-            
-            # evaluate on test set
-            model.eval()
-            data_true, targets_true = newtasks.sample_batch(step)
+        data, targets = noisyLinearRegression.sample_batch(step)
+        loss_total = []
+        for i in range(0, args.n_points):
+            data_copy = data.clone()
+            data_copy[:, i+1:, :] = 0
+            targets_copy = targets.clone()
+            targets_copy[:, i:] = 0
+            data_true = torch.concat((data_copy.view(args.batch_size, -1), targets_copy), dim=-1)
+            targets_true = targets[:, i].unsqueeze(-1)
             data_true, targets_true = data_true.to(device), targets_true.to(device)
+            optimizer.zero_grad()
             outputs = model(data_true)
             loss = loss_fn(outputs, targets_true)
-            print(f"Step {step} | Test Loss {loss.item()/8}")
-            writer.add_scalar("Loss/test", loss.item()/8, step)
-            model.train()
+            loss.backward()
+            optimizer.step()
+            loss_total += [loss.item()/args.n_dims]
+        if step % 100 == 0:
+            print(f"Step {step} | Train Loss {sum(loss_total)/args.n_points}")
+        if step % 500 == 0:
+            for j in range(args.n_points):
+                print(f"Loss/train_{j}", loss_total[j])
+        # lr_scheduler.step()
+        # if step % 500 == 0:
+        #     print(f"Step {step} | Train Loss {loss.item()/8}")
+        #     writer.add_scalar("Loss/train", loss.item()/8, step)
+            
+        #     # evaluate on test set
+        #     model.eval()
+        #     data_true, targets_true = newtasks.sample_batch(step)
+        #     data_true, targets_true = data_true.to(device), targets_true.to(device)
+        #     outputs = model(data_true)
+        #     loss = loss_fn(outputs, targets_true)
+        #     print(f"Step {step} | Test Loss {loss.item()/8}")
+        #     writer.add_scalar("Loss/test", loss.item()/8, step)
+        #     model.train()
 
 if __name__ == "__main__":
     main()

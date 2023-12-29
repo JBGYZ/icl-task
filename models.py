@@ -205,4 +205,4 @@ class TransformerEncoder(nn.Module):
         src = src.permute(1,0,2) # (batch_size, seq_len, embedding_dim)
         # src = src.reshape(src.shape[0], -1)
         src = self.classifier(src)
-        return src[:, -1, :].squeeze()
+        return src[:, -1, :] # return only the last token's output
