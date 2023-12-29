@@ -260,6 +260,7 @@ def main():
     model.to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
     loss_fn = nn.MSELoss()
 
     # lr_scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=10000, eta_min=0.0, last_epoch=-1)
@@ -320,19 +321,26 @@ def main():
             for j in range(args.n_points):
                 print(f"Loss/train_{j}", loss_total[j])
         # lr_scheduler.step()
-        # if step % 500 == 0:
-        #     print(f"Step {step} | Train Loss {loss.item()/8}")
-        #     writer.add_scalar("Loss/train", loss.item()/8, step)
-            
-        #     # evaluate on test set
-        #     model.eval()
-        #     data_true, targets_true = newtasks.sample_batch(step)
-        #     data_true, targets_true = data_true.to(device), targets_true.to(device)
-        #     outputs = model(data_true)
-        #     loss = loss_fn(outputs, targets_true)
-        #     print(f"Step {step} | Test Loss {loss.item()/8}")
-        #     writer.add_scalar("Loss/test", loss.item()/8, step)
-        #     model.train()
+        if step % 500 == 0:
+            # evaluate on test set
+            model.eval()
+            data, targets = newtasks.sample_batch(step)
+            loss_total = []
+            for i in range(0, args.n_points):
+                data_copy = data.clone()
+                data_copy[:, i+1:, :] = 0
+                targets_copy = targets.clone()
+                targets_copy[:, i:] = 0
+                data_true = torch.concat((data_copy.view(args.batch_size, -1), targets_copy), dim=-1)
+                targets_true = targets[:, i].unsqueeze(-1)
+                data_true, targets_true = data_true.to(device), targets_true.to(device)
+                outputs = model(data_true)
+                loss = loss_fn(outputs, targets_true)
+                loss_total += [loss.item()/args.n_dims]
+            model.train()
+            print(f"Step {step} | Test Loss {sum(loss_total)/args.n_points}")
+            for j in range(args.n_points):
+                print(f"Loss/test_{j}", loss_total[j])
 
 if __name__ == "__main__":
     main()

@@ -56,6 +56,7 @@ class MLP(nn.Module):
     def __init__(self, input_dim, n_hidden_neurons, output_dim=30 ,n_hidden_layers=2, dropout=0.1):
         super(MLP, self).__init__()
         self.first_layer = nn.Linear(input_dim, n_hidden_neurons)
+        # self.layers = nn.ModuleList([nn.Sequential(nn.BatchNorm1d(n_hidden_neurons), nn.Linear(n_hidden_neurons, n_hidden_neurons)) for _ in range(n_hidden_layers)])        
         self.layers = nn.ModuleList([nn.Linear(n_hidden_neurons, n_hidden_neurons) for _ in range(n_hidden_layers)])        
         self.last_layer = nn.Linear(n_hidden_neurons, output_dim)
         # self.dropout = nn.Dropout(dropout)
