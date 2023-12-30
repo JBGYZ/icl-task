@@ -214,7 +214,7 @@ def main():
                     n_hidden_layers=args.n_hidden_layers,
                     n_hidden_neurons=args.n_hidden_neurons,)
         
-        noisyLinearRegression = NoisyLinearRegression(
+        noisyLinearRegression = NoisyLinearRegression_trf(
         n_tasks=args.n_tasks,
         n_dims=args.n_dims,
         n_points=args.n_points,
@@ -284,7 +284,7 @@ def main():
             dtype=torch.float32,)
         newtasks.__post_init__()
     else:
-        newtasks = NoisyLinearRegression(
+        newtasks = NoisyLinearRegression_trf(
         n_tasks=args.n_tasks,
         n_dims=args.n_dims,
         n_points=args.n_points,
@@ -301,14 +301,12 @@ def main():
     for step in range(args.max_iterations):
         data, targets = noisyLinearRegression.sample_batch(step)
         loss_total = []
-        for i in range(0, args.n_points):
+        for i in range(args.n_points):
             data_copy = data.clone()
-            data_copy[:, i+1:, :] = 0
-            targets_copy = targets.clone()
-            targets_copy[:, i:] = 0
-            data_true = torch.concat((data_copy.view(args.batch_size, -1), targets_copy), dim=-1)
+            data_copy[:, i*2+1:, :] = 0
+            
             targets_true = targets[:, i].unsqueeze(-1)
-            data_true, targets_true = data_true.to(device), targets_true.to(device)
+            data_true, targets_true = data_copy.to(device), targets_true.to(device)
             optimizer.zero_grad()
             outputs = model(data_true)
             loss = loss_fn(outputs, targets_true)
@@ -316,31 +314,31 @@ def main():
             optimizer.step()
             loss_total += [loss.item()/args.n_dims]
         if step % 100 == 0:
-            print(f"Step {step} | Train Loss {sum(loss_total)/args.n_points}")
+            print(f"Step {step} | Train Loss {sum(loss_total)/len(loss_total)}")
         if step % 500 == 0:
             for j in range(args.n_points):
-                print(f"Loss/train_{j}", loss_total[j])
+                print(f"Loss/train_{j}", loss_total[j - args.n_points//2 +1])
         # lr_scheduler.step()
         if step % 500 == 0:
             # evaluate on test set
             model.eval()
             data, targets = newtasks.sample_batch(step)
             loss_total = []
-            for i in range(0, args.n_points):
+            for i in range(args.n_points):
                 data_copy = data.clone()
-                data_copy[:, i+1:, :] = 0
-                targets_copy = targets.clone()
-                targets_copy[:, i:] = 0
-                data_true = torch.concat((data_copy.view(args.batch_size, -1), targets_copy), dim=-1)
+                data_copy[:, i*2+1:, :] = 0
                 targets_true = targets[:, i].unsqueeze(-1)
-                data_true, targets_true = data_true.to(device), targets_true.to(device)
+                data_true, targets_true = data_copy.to(device), targets_true.to(device)
+                optimizer.zero_grad()
                 outputs = model(data_true)
                 loss = loss_fn(outputs, targets_true)
+                loss.backward()
+                optimizer.step()
                 loss_total += [loss.item()/args.n_dims]
             model.train()
-            print(f"Step {step} | Test Loss {sum(loss_total)/args.n_points}")
+            print(f"Step {step} | Test Loss {sum(loss_total)/len(loss_total)}")
             for j in range(args.n_points):
-                print(f"Loss/test_{j}", loss_total[j])
+                print(f"Loss/test_{j}", loss_total[j - args.n_points//2 +1])
 
 if __name__ == "__main__":
     main()
