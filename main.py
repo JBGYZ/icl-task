@@ -168,7 +168,7 @@
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn as nn
-from models import MLP, TransformerEncoder
+from models import MLP, TransformerEncoder, StackedRNN
 from data_generator import NoisyLinearRegression, NoisyLinearRegression_trf
 import argparse
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
@@ -209,49 +209,25 @@ def main():
     print(device)  
 
     if args.network == "fcn":
-        model = MLP(input_dim=(args.n_dims + 1) * args.n_points, 
+        model = MLP(input_dim=(args.n_dims + 1) * args.n_points*2, 
                     output_dim=args.output_dim,
                     n_hidden_layers=args.n_hidden_layers,
                     n_hidden_neurons=args.n_hidden_neurons,)
-        
-        noisyLinearRegression = NoisyLinearRegression_trf(
-        n_tasks=args.n_tasks,
-        n_dims=args.n_dims,
-        n_points=args.n_points,
-        batch_size=args.batch_size,
-        data_seed=args.data_seed,
-        task_seed=args.task_seed,
-        noise_seed=args.noise_seed,
-        data_scale=args.data_scale,
-        task_scale=args.task_scale,
-        noise_scale=args.noise_scale,
-        dtype=torch.float32,)
-        noisyLinearRegression.__post_init__()
-
     elif args.network == "transformer":
         model = TransformerEncoder(
                         d_model=args.n_dims +1 ,
                         dim_feedforward=args.dim_feedforward,
                         scaleup_dim=args.n_hidden_neurons,
-                        nhead=1,
+                        nhead=2,
                         num_layers=args.n_hidden_layers,
                         embedding_type="scaleup",
                         pos_encoder_type="learned",
                         dropout=args.dropout)
-        
-        noisyLinearRegression = NoisyLinearRegression_trf(
-        n_tasks=args.n_tasks,
-        n_dims=args.n_dims,
-        n_points=args.n_points,
-        batch_size=args.batch_size,
-        data_seed=args.data_seed,
-        task_seed=args.task_seed,
-        noise_seed=args.noise_seed,
-        data_scale=args.data_scale,
-        task_scale=args.task_scale,
-        noise_scale=args.noise_scale,
-        dtype=torch.float32,)
-        noisyLinearRegression.__post_init__()
+    elif args.network == "rnn":
+        model = StackedRNN(input_size=args.n_dims + 1,
+                        hidden_size=args.n_hidden_neurons,
+                        num_layers=args.n_hidden_layers,
+                        output_size=args.output_dim)
     else:
         raise NotImplementedError
 
@@ -268,23 +244,21 @@ def main():
 
     writer = SummaryWriter(log_dir=f"testtest/network_{args.network}_n_tasks_{args.n_tasks}_n_dims_{args.n_dims}__n_points_{args.n_points}_n_hidden_layers_{args.n_hidden_layers}_n_hidden_neurons_{args.n_hidden_neurons}_dim_feedforward_{args.dim_feedforward}_lr_{args.lr}")
 
-    if args.network == "transformer":
+    noisyLinearRegression = NoisyLinearRegression_trf(
+    n_tasks=args.n_tasks,
+    n_dims=args.n_dims,
+    n_points=args.n_points,
+    batch_size=args.batch_size,
+    data_seed=args.data_seed,
+    task_seed=args.task_seed,
+    noise_seed=args.noise_seed,
+    data_scale=args.data_scale,
+    task_scale=args.task_scale,
+    noise_scale=args.noise_scale,
+    dtype=torch.float32,)
+    noisyLinearRegression.__post_init__()
 
-        newtasks = NoisyLinearRegression_trf(
-            n_tasks=args.n_tasks,
-            n_dims=args.n_dims,
-            n_points=args.n_points,
-            batch_size=args.batch_size,
-            data_seed=args.data_seed - args.max_iterations,
-            task_seed=args.task_seed - args.max_iterations,
-            noise_seed=args.noise_seed - args.max_iterations,
-            data_scale=args.data_scale,
-            task_scale=args.task_scale,
-            noise_scale=args.noise_scale,
-            dtype=torch.float32,)
-        newtasks.__post_init__()
-    else:
-        newtasks = NoisyLinearRegression_trf(
+    newtasks = NoisyLinearRegression_trf(
         n_tasks=args.n_tasks,
         n_dims=args.n_dims,
         n_points=args.n_points,
@@ -296,7 +270,7 @@ def main():
         task_scale=args.task_scale,
         noise_scale=args.noise_scale,
         dtype=torch.float32,)
-        newtasks.__post_init__()
+    newtasks.__post_init__()
 
     for step in range(args.max_iterations):
         data, targets = noisyLinearRegression.sample_batch(step)
@@ -317,7 +291,7 @@ def main():
             print(f"Step {step} | Train Loss {sum(loss_total)/len(loss_total)}")
         if step % 500 == 0:
             for j in range(args.n_points):
-                print(f"Loss/train_{j}", loss_total[j - args.n_points//2 +1])
+                print(f"Loss/train_{j}", loss_total[j])
         # lr_scheduler.step()
         if step % 500 == 0:
             # evaluate on test set
@@ -332,13 +306,11 @@ def main():
                 optimizer.zero_grad()
                 outputs = model(data_true)
                 loss = loss_fn(outputs, targets_true)
-                loss.backward()
-                optimizer.step()
                 loss_total += [loss.item()/args.n_dims]
             model.train()
             print(f"Step {step} | Test Loss {sum(loss_total)/len(loss_total)}")
             for j in range(args.n_points):
-                print(f"Loss/test_{j}", loss_total[j - args.n_points//2 +1])
+                print(f"Loss/test_{j}", loss_total[j])
 
 if __name__ == "__main__":
     main()
