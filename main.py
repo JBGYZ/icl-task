@@ -242,7 +242,7 @@ def main():
     # lr_scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=10000, eta_min=0.0, last_epoch=-1)
 
 
-    writer = SummaryWriter(log_dir=f"testtest/network_{args.network}_n_tasks_{args.n_tasks}_n_dims_{args.n_dims}__n_points_{args.n_points}_n_hidden_layers_{args.n_hidden_layers}_n_hidden_neurons_{args.n_hidden_neurons}_dim_feedforward_{args.dim_feedforward}_lr_{args.lr}")
+    writer = SummaryWriter(log_dir=f"plotruns/network_{args.network}_n_tasks_{args.n_tasks}_n_dims_{args.n_dims}__n_points_{args.n_points}_n_hidden_layers_{args.n_hidden_layers}_n_hidden_neurons_{args.n_hidden_neurons}_dim_feedforward_{args.dim_feedforward}_lr_{args.lr}")
 
     noisyLinearRegression = NoisyLinearRegression_trf(
     n_tasks=args.n_tasks,
@@ -289,9 +289,12 @@ def main():
             loss_total += [loss.item()/args.n_dims]
         if step % 100 == 0:
             print(f"Step {step} | Train Loss {sum(loss_total)/len(loss_total)}")
+            writer.add_scalar("Loss/train", sum(loss_total)/len(loss_total), step)
         if step % 500 == 0:
             for j in range(args.n_points):
                 print(f"Loss/train_{j}", loss_total[j])
+                writer.add_scalar(f"Loss/train_{j}", loss_total[j], step)
+
         # lr_scheduler.step()
         if step % 500 == 0:
             # evaluate on test set
@@ -309,8 +312,10 @@ def main():
                 loss_total += [loss.item()/args.n_dims]
             model.train()
             print(f"Step {step} | Test Loss {sum(loss_total)/len(loss_total)}")
+            writer.add_scalar("Loss/test", sum(loss_total)/len(loss_total), step)
             for j in range(args.n_points):
                 print(f"Loss/test_{j}", loss_total[j])
+                writer.add_scalar(f"Loss/test_{j}", loss_total[j], step)
 
 if __name__ == "__main__":
     main()
