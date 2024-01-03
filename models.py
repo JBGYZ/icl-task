@@ -34,45 +34,18 @@ class Ridge(nn.Module):
         # return pred[:, 0, 0]
         return pred.squeeze()
 
-# ridgemodel = Ridge(0.1)
-    
-# simple MLP with nb of hidden layers and nb of neurons per layer as hyperparameters
-# class MLP(nn.Module):
-#     def __init__(self, input_dim, output_dim, n_hidden_layers, n_hidden_neurons):
-#         super(MLP, self).__init__()
-#         self.n_hidden_layers = n_hidden_layers
-#         self.layers = nn.ModuleList()
-#         self.layers.append(nn.Linear(input_dim, n_hidden_neurons))
-#         for _ in range(n_hidden_layers):
-#             self.layers.append(nn.Linear(n_hidden_neurons, n_hidden_neurons))
-#         self.layers.append(nn.Linear(n_hidden_neurons, output_dim))
-
-#     def forward(self, x):
-#         for i in range(self.n_hidden_layers):
-#             x = F.relu(self.layers[i](x))
-#         x = self.layers[-1](x)
-#         return x
-    
+  
 class MLP(nn.Module):
     def __init__(self, input_dim, n_hidden_neurons, scaleup_dim=5, output_dim=30 ,n_hidden_layers=2, dropout=0.1):
         super(MLP, self).__init__()
-        # self.pos_encoder = LearnedPositionalEncoding(5)
-        # self.pos_encoder = RotaryPositionEmbedding(6)
-        self.embedding = ScaleupEmbedding(5, 2, 1)
-        self.first_layer = nn.Linear(32, n_hidden_neurons)
+
+        self.first_layer = nn.Linear(input_dim, n_hidden_neurons)
         # self.layers = nn.ModuleList([nn.Sequential(nn.BatchNorm1d(n_hidden_neurons), nn.Linear(n_hidden_neurons, n_hidden_neurons)) for _ in range(n_hidden_layers)])        
         self.layers = nn.ModuleList([nn.Linear(n_hidden_neurons, n_hidden_neurons) for _ in range(n_hidden_layers)])        
         self.last_layer = nn.Linear(n_hidden_neurons, output_dim)
         self.dropout = nn.Dropout(dropout)
         
     def forward(self, x: torch.Tensor):
-        # print(x.shape)
-        # x = x.permute(1,0,2)
-        # x = self.pos_encoder(x)
-        # x = x.permute(1,0,2)
-        x = self.embedding(x)
-        # x = self.pos_encoder(x)
-        # print(x.shape)
         x = x.reshape(x.size(0), -1) # flatten
         x = self.first_layer(x)
         for layer in self.layers:
@@ -241,7 +214,7 @@ class TransformerEncoder(nn.Module):
         src = self.embedding(src)
         # src = src.permute(0,2,1)
         src = src.permute(1,0,2)
-        # src = self.pos_encoder(src)
+        src = self.pos_encoder(src)
         for layer in self.layers:
             src = layer(src, src_mask)
         src = src.permute(1,0,2) # (batch_size, seq_len, embedding_dim)
@@ -275,21 +248,3 @@ class StackedRNN(nn.Module):
         out = self.fc(out[:, -1, :])
         return out
 
-
-# # Hyperparameters
-# input_size = 10  # Input size of the sequence
-# hidden_size = 20  # Hidden state size of the RNN
-# num_layers = 2  # Number of stacked RNN layers
-# output_size = 1  # Output size (e.g., regression output)
-
-# # Instantiate the model
-# model = StackedRNN(input_size, hidden_size, num_layers, output_size)
-
-# # Define a sample input sequence
-# input_sequence = torch.randn(32, 5, input_size)  # Batch size 32, sequence length 5
-
-# # Forward pass
-# output = model(input_sequence)
-
-# # Print the output shape
-# print("Output shape:", output.shape)
