@@ -228,6 +228,18 @@ def main():
                         hidden_size=args.n_hidden_neurons,
                         num_layers=args.n_hidden_layers,
                         output_size=args.output_dim)
+    elif args.network == "mlpmixer":
+        model = MLPMixer(input_dim=args.n_dims + 1,
+                        n_seq=args.n_points * 2,
+                        n_hidden_neurons=args.n_hidden_neurons,
+                        output_dim=args.output_dim,
+                        n_hidden_layers=args.n_hidden_layers,
+                        dropout=args.dropout)
+    elif args.network == "cnn":
+        model = CNN(
+                    n_hidden_neurons=args.n_hidden_neurons,
+                    n_hidden_layers=args.n_hidden_layers,
+                    dropout=args.dropout)
     else:
         raise NotImplementedError
 
