@@ -168,7 +168,7 @@
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn as nn
-from models import MLP, TransformerEncoder, StackedRNN
+from models import MLP, TransformerEncoder, StackedRNN, MLPMixer, CNN
 from data_generator import NoisyLinearRegression, NoisyLinearRegression_trf
 import argparse
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
@@ -236,9 +236,11 @@ def main():
                         n_hidden_layers=args.n_hidden_layers,
                         dropout=args.dropout)
     elif args.network == "cnn":
-        model = CNN(
+        model = CNN(embed_dim=args.n_points * args.dim_feedforward,
+                    num_filters=args.dim_feedforward,
                     n_hidden_neurons=args.n_hidden_neurons,
                     n_hidden_layers=args.n_hidden_layers,
+                    n_dim=args.n_dims,
                     dropout=args.dropout)
     else:
         raise NotImplementedError
@@ -254,7 +256,7 @@ def main():
     # lr_scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=10000, eta_min=0.0, last_epoch=-1)
 
 
-    writer = SummaryWriter(log_dir=f"plotruns/network_{args.network}_n_tasks_{args.n_tasks}_n_dims_{args.n_dims}__n_points_{args.n_points}_n_hidden_layers_{args.n_hidden_layers}_n_hidden_neurons_{args.n_hidden_neurons}_dim_feedforward_{args.dim_feedforward}_lr_{args.lr}")
+    writer = SummaryWriter(log_dir=f"testtest/network_{args.network}_n_tasks_{args.n_tasks}_n_dims_{args.n_dims}_n_points_{args.n_points}_n_hidden_layers_{args.n_hidden_layers}_n_hidden_neurons_{args.n_hidden_neurons}_dim_feedforward_{args.dim_feedforward}_lr_{args.lr}_batch_size_{args.batch_size}_seed_{args.data_seed}")
 
     noisyLinearRegression = NoisyLinearRegression_trf(
     n_tasks=args.n_tasks,
@@ -287,47 +289,40 @@ def main():
     for step in range(args.max_iterations):
         data, targets = noisyLinearRegression.sample_batch(step)
         loss_total = []
-        for i in range(args.n_points):
-            data_copy = data.clone()
-            data_copy[:, i*2+1:, :] = 0
-            
-            targets_true = targets[:, i].unsqueeze(-1)
-            data_true, targets_true = data_copy.to(device), targets_true.to(device)
-            optimizer.zero_grad()
-            outputs = model(data_true)
-            loss = loss_fn(outputs, targets_true)
-            loss.backward()
-            optimizer.step()
-            loss_total += [loss.item()/args.n_dims]
+        i = args.n_points - 1
+        data[:, i*2+1:, :] = 0
+        targets_true = targets[:, i].unsqueeze(-1)
+        data_true, targets_true = data.to(device), targets_true.to(device)
+        optimizer.zero_grad()
+        outputs = model(data_true)
+        loss = loss_fn(outputs, targets_true)
+        loss.backward()
+        optimizer.step()
+        loss_total += [loss.item()/args.n_dims]
+
         if step % 100 == 0:
             print(f"Step {step} | Train Loss {sum(loss_total)/len(loss_total)}")
             writer.add_scalar("Loss/train", sum(loss_total)/len(loss_total), step)
-        if step % 500 == 0:
-            for j in range(args.n_points):
-                print(f"Loss/train_{j}", loss_total[j])
-                writer.add_scalar(f"Loss/train_{j}", loss_total[j], step)
+
 
         # lr_scheduler.step()
-        if step % 500 == 0:
-            # evaluate on test set
-            model.eval()
-            data, targets = newtasks.sample_batch(step)
-            loss_total = []
-            for i in range(args.n_points):
-                data_copy = data.clone()
-                data_copy[:, i*2+1:, :] = 0
-                targets_true = targets[:, i].unsqueeze(-1)
-                data_true, targets_true = data_copy.to(device), targets_true.to(device)
-                optimizer.zero_grad()
-                outputs = model(data_true)
-                loss = loss_fn(outputs, targets_true)
-                loss_total += [loss.item()/args.n_dims]
-            model.train()
-            print(f"Step {step} | Test Loss {sum(loss_total)/len(loss_total)}")
-            writer.add_scalar("Loss/test", sum(loss_total)/len(loss_total), step)
-            for j in range(args.n_points):
-                print(f"Loss/test_{j}", loss_total[j])
-                writer.add_scalar(f"Loss/test_{j}", loss_total[j], step)
+        # if step % 500 == 0:
+        #     # evaluate on test set
+        #     model.eval()
+        #     data, targets = newtasks.sample_batch(step)
+        #     loss_total = []
+        #     i = args.n_points - 1
+        #     data[:, i*2+1:, :] = 0
+        #     targets_true = targets[:, i].unsqueeze(-1)
+        #     data_true, targets_true = data.to(device), targets_true.to(device)
+        #     optimizer.zero_grad()
+        #     outputs = model(data_true)
+        #     loss = loss_fn(outputs, targets_true)
+        #     loss_total += [loss.item()/args.n_dims]
+        #     model.train()
+        #     print(f"Step {step} | Test Loss {sum(loss_total)/len(loss_total)}")
+        #     writer.add_scalar("Loss/test", sum(loss_total)/len(loss_total), step)
+
 
 if __name__ == "__main__":
     main()
