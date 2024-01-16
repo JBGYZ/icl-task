@@ -83,6 +83,39 @@ class MLPMixer(nn.Module):
 
         x = self.last_layer(x[:, -1, :])
         return x
+    
+class MLPMixerFCN(nn.Module):
+    def __init__(self, input_dim, n_hidden_neurons, n_seq=16, output_dim=1 ,n_hidden_layers=2, dropout=0.1):
+        super(MLPMixerFCN, self).__init__()
+        self.first_layer = nn.Linear(input_dim, n_hidden_neurons)
+        self.second_layer = nn.Linear(n_seq, n_hidden_neurons)
+
+        self.reducer_layer = nn.Linear(n_hidden_neurons*n_hidden_neurons, n_hidden_neurons)
+        self.layers = nn.ModuleList([nn.Linear(n_hidden_neurons, n_hidden_neurons) for _ in range(n_hidden_layers)])     
+          
+        self.last_layer = nn.Linear(n_hidden_neurons, output_dim)
+        self.dropout = nn.Dropout(dropout)
+        
+    def forward(self, x: torch.Tensor):
+        x = self.first_layer(x)
+        x = nn.functional.relu(x)
+        x = x.transpose(1, 2)
+
+        x = self.second_layer(x)
+        x = nn.functional.relu(x)
+        x = x.transpose(1, 2)
+
+        x = x.reshape(x.size(0), -1) # flatten
+        x = self.reducer_layer(x)
+        x = nn.functional.relu(x)
+        x = self.dropout(x)
+        for layer in self.layers:
+            x = layer(x)
+            x = nn.functional.relu(x)
+            # x = x.transpose(1, 2) # batch_size x n_seq x n_hidden_neurons
+
+        x = self.last_layer(x)
+        return x
 
 class CNN(nn.Module):
     """An 1D Convulational Neural Network."""
@@ -91,6 +124,7 @@ class CNN(nn.Module):
                  num_filters=20*5,
                  n_hidden_neurons=100,
                  n_hidden_layers=3,
+                 n_dim = 4,
                  dropout=0.1):
         """
         The constructor for CNN class.
@@ -113,10 +147,10 @@ class CNN(nn.Module):
         # Conv layer 
         self.conv_layer = nn.Conv2d(in_channels=1,
                       out_channels=num_filters,
-                      kernel_size=(2, 5),
-                      stride = 2)
+                      kernel_size=(1, n_dim+1),
+                      stride = 1)
         
-        self.first_layer = nn.Linear(embed_dim, n_hidden_neurons)
+        self.first_layer = nn.Linear(embed_dim*2, n_hidden_neurons)
         # Fc layers
         self.layers = nn.ModuleList([nn.Linear(n_hidden_neurons, n_hidden_neurons) for _ in range(n_hidden_layers)])  
         
@@ -138,7 +172,6 @@ class CNN(nn.Module):
         # scalar product between x[1] items and its neighbors
         # x = (x[:, 1::2, :] * x[:,  ::2, :])
 
-
         x = x.view(x.size(0), -1)
         x = nn.functional.relu(x)
         x = self.first_layer(x)
@@ -150,7 +183,83 @@ class CNN(nn.Module):
         x = self.last_layer(x)
         return x
 
+class CNNdeep(nn.Module):
+    """An 1D Convulational Neural Network."""
+    def __init__(self,
+                 embed_dim=8*20*5,
+                 num_filters=20*5,
+                 n_hidden_neurons=100,
+                 n_hidden_layers=3,
+                 n_dim = 4,
+                 dropout=0.1):
+        """
+        The constructor for CNN class.
 
+        Args:
+            vocab_size (int): Need to be specified when not pretrained word
+                embeddings are not used.
+            embed_dim (int): Dimension of word vectors. Need to be specified
+                when pretrained word embeddings are not used. Default: 300
+            filter_sizes (List[int]): List of filter sizes. Default: [3, 4, 5]
+            num_filters (List[int]): List of number of filters, has the same
+                length as `filter_sizes`. Default: [100, 100, 100]
+            n_classes (int): Number of classes. Default: 2
+            dropout (float): Dropout rate. Default: 0.5
+        """
+
+        super(CNNdeep, self).__init__()
+        self.embed_dim = embed_dim
+        self.num_filters = num_filters
+        # Conv layer 
+        self.conv_layer = nn.Conv2d(in_channels=1,
+                      out_channels=num_filters,
+                      kernel_size=(1, n_dim+1),
+                      stride = 1)
+        
+        self.layers_cnn = nn.ModuleList([nn.Conv1d(in_channels=num_filters,
+                      out_channels=num_filters,
+                      kernel_size=3,
+                      stride = 1,
+                      padding=1) for _ in range(5)])
+        
+        # self.first_layer = nn.Linear(embed_dim, n_hidden_neurons)
+        self.first_layer = nn.Linear(16*num_filters, n_hidden_neurons)
+
+        # Fc layers
+        self.layers = nn.ModuleList([nn.Linear(n_hidden_neurons, n_hidden_neurons) for _ in range(n_hidden_layers)])  
+        
+        self.last_layer = nn.Linear(n_hidden_neurons, 1)
+
+
+    def forward(self, x: torch.Tensor):
+        """Perform a forward pass through the network.
+
+        Args:
+            x (torch.Tensor): A tensor of token ids with shape
+                (batch_size, n_seq, n_dim)
+
+        Returns:
+            
+        """
+        x = x.unsqueeze(1) # batch_size x 1 x n_seq x n_dim
+        x = self.conv_layer(x) # batch_size x num_filters x n_seq x 1
+        # scalar product between x[1] items and its neighbors
+        # x = (x[:, 1::2, :] * x[:,  ::2, :])
+        x = x.squeeze(-1) # batch_size x num_filters x n_seq
+        for layer in self.layers_cnn:
+            x = layer(x)
+            x = nn.functional.relu(x)            
+            # print(x.shape)
+        x = x.view(x.size(0), -1)
+        x = nn.functional.relu(x)
+        x = self.first_layer(x)
+        for layer in self.layers:
+            x = nn.functional.relu(x)
+            x = layer(x)
+
+        x = nn.functional.relu(x)
+        x = self.last_layer(x)
+        return x
 
 class ScaleupEmbedding(nn.Module):
     """
@@ -317,6 +426,56 @@ class TransformerEncoder(nn.Module):
         # src = src.reshape(src.shape[0], -1)
         src = self.classifier(src)
         return src[:, -1, :] # return only the last token's output
+        # return src
+
+class TransformerEncoderFCN(nn.Module):
+    """
+        Transformer encoder module for classification with only one self-attention layer
+    """
+    def __init__(self, d_model, num_layers, nhead, dim_feedforward, scaleup_dim, embedding_type, pos_encoder_type, dropout=0.1, ):
+        super(TransformerEncoderFCN, self).__init__()
+        if embedding_type == "scaleup":
+            self.embedding = ScaleupEmbedding(d_model, scaleup_dim, 1)
+            d_model = scaleup_dim
+        elif embedding_type == "none":
+            self.embedding = nn.Identity()
+        else:
+            raise NameError("Specify a valid embedding type in [scaleup]")
+        
+        if pos_encoder_type == "absolute":
+            self.pos_encoder = PositionalEncoding(d_model, dropout)
+        elif pos_encoder_type == "learned":
+            self.pos_encoder = LearnedPositionalEncoding(d_model)
+        else:  
+            raise NameError("Specify a valid positional encoder type in [absolute, learned]")
+        # Stack multiple encoder layers
+
+        self.transformer_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward, dropout)
+        self.first_layer = nn.Linear(d_model*16, d_model)
+        # self.layers = nn.ModuleList([nn.Sequential(nn.BatchNorm1d(n_hidden_neurons), nn.Linear(n_hidden_neurons, n_hidden_neurons)) for _ in range(n_hidden_layers)])        
+        self.layers = nn.ModuleList([nn.Linear(d_model, d_model) for _ in range(num_layers)])        
+        self.dropout = nn.Dropout(dropout)
+        
+        self.classifier = nn.Linear(d_model, 1)
+
+
+
+    def forward(self, src, src_mask=None):
+        src = self.embedding(src)
+        src = src.permute(1,0,2)
+        src = self.pos_encoder(src)
+        src = self.transformer_layer(src, src_mask)
+        src = src.permute(1,0,2) # (batch_size, seq_len, embedding_dim)
+
+        src = src.reshape(src.size(0), -1) # flatten
+        src = self.first_layer(src)
+        for layer in self.layers:
+            src = layer(src)
+            src = nn.functional.relu(src)
+            src = self.dropout(src)
+        # src = src.reshape(src.shape[0], -1)
+        src = self.classifier(src)
+        return src # return only the last token's output
         # return src
 
 
