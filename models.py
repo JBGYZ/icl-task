@@ -6,6 +6,7 @@ import math
 import numpy as np
 
 class Ridge(nn.Module):
+    """A ridge linear regressor."""
     def __init__(self, lam):
         super(Ridge, self).__init__()
         self.lam = lam
@@ -36,7 +37,8 @@ class Ridge(nn.Module):
 
   
 class MLP(nn.Module):
-    def __init__(self, input_dim, n_hidden_neurons, scaleup_dim=5, output_dim=30 ,n_hidden_layers=2, dropout=0.1):
+    """A simple MLP with dropout but without batch normalization"""
+    def __init__(self, input_dim, n_hidden_neurons, output_dim=30 ,n_hidden_layers=2, dropout=0.1):
         super(MLP, self).__init__()
 
         self.first_layer = nn.Linear(input_dim, n_hidden_neurons)
@@ -57,6 +59,7 @@ class MLP(nn.Module):
         return x
     
 class MLPMixer(nn.Module):
+    """A simple MLP Mixer without batch normalization and dropout"""
     def __init__(self, input_dim, n_hidden_neurons, n_seq=16, output_dim=1 ,n_hidden_layers=2, dropout=0.1):
         super(MLPMixer, self).__init__()
         self.first_layer = nn.Linear(input_dim, n_hidden_neurons)
@@ -85,6 +88,7 @@ class MLPMixer(nn.Module):
         return x
     
 class MLPMixerFCN(nn.Module):
+    """A simple one layer MLP Mixer plus deep FCN without batch normalization and dropout"""
     def __init__(self, input_dim, n_hidden_neurons, n_seq=16, output_dim=1 ,n_hidden_layers=2, dropout=0.1):
         super(MLPMixerFCN, self).__init__()
         self.first_layer = nn.Linear(input_dim, n_hidden_neurons)
@@ -118,7 +122,7 @@ class MLPMixerFCN(nn.Module):
         return x
 
 class CNN(nn.Module):
-    """An 1D Convulational Neural Network."""
+    """An 2D Convulational Neural Network adapted for ICL linear regression."""
     def __init__(self,
                  embed_dim=8*20*5,
                  num_filters=20*5,
@@ -129,15 +133,12 @@ class CNN(nn.Module):
         """
         The constructor for CNN class.
 
+        Embed_dim and n_dim are provided in the main file.
+
         Args:
-            vocab_size (int): Need to be specified when not pretrained word
-                embeddings are not used.
-            embed_dim (int): Dimension of word vectors. Need to be specified
-                when pretrained word embeddings are not used. Default: 300
-            filter_sizes (List[int]): List of filter sizes. Default: [3, 4, 5]
-            num_filters (List[int]): List of number of filters, has the same
-                length as `filter_sizes`. Default: [100, 100, 100]
-            n_classes (int): Number of classes. Default: 2
+            num_filters (int): Nb of filters in the conv layer
+            n_hidden_neurons (int): Nb of neurons in the FCN layers
+            n_hidden_layers (int): Nb of FCN layers
             dropout (float): Dropout rate. Default: 0.5
         """
 
@@ -182,85 +183,6 @@ class CNN(nn.Module):
         x = nn.functional.relu(x)
         x = self.last_layer(x)
         return x
-
-class CNNdeep(nn.Module):
-    """An 1D Convulational Neural Network."""
-    def __init__(self,
-                 embed_dim=8*20*5,
-                 num_filters=20*5,
-                 n_hidden_neurons=100,
-                 n_hidden_layers=3,
-                 n_dim = 4,
-                 dropout=0.1):
-        """
-        The constructor for CNN class.
-
-        Args:
-            vocab_size (int): Need to be specified when not pretrained word
-                embeddings are not used.
-            embed_dim (int): Dimension of word vectors. Need to be specified
-                when pretrained word embeddings are not used. Default: 300
-            filter_sizes (List[int]): List of filter sizes. Default: [3, 4, 5]
-            num_filters (List[int]): List of number of filters, has the same
-                length as `filter_sizes`. Default: [100, 100, 100]
-            n_classes (int): Number of classes. Default: 2
-            dropout (float): Dropout rate. Default: 0.5
-        """
-
-        super(CNNdeep, self).__init__()
-        self.embed_dim = embed_dim
-        self.num_filters = num_filters
-        # Conv layer 
-        self.conv_layer = nn.Conv2d(in_channels=1,
-                      out_channels=num_filters,
-                      kernel_size=(1, n_dim+1),
-                      stride = 1)
-        
-        self.layers_cnn = nn.ModuleList([nn.Conv1d(in_channels=num_filters,
-                      out_channels=num_filters,
-                      kernel_size=3,
-                      stride = 1,
-                      padding=1) for _ in range(5)])
-        
-        # self.first_layer = nn.Linear(embed_dim, n_hidden_neurons)
-        self.first_layer = nn.Linear(16*num_filters, n_hidden_neurons)
-
-        # Fc layers
-        self.layers = nn.ModuleList([nn.Linear(n_hidden_neurons, n_hidden_neurons) for _ in range(n_hidden_layers)])  
-        
-        self.last_layer = nn.Linear(n_hidden_neurons, 1)
-
-
-    def forward(self, x: torch.Tensor):
-        """Perform a forward pass through the network.
-
-        Args:
-            x (torch.Tensor): A tensor of token ids with shape
-                (batch_size, n_seq, n_dim)
-
-        Returns:
-            
-        """
-        x = x.unsqueeze(1) # batch_size x 1 x n_seq x n_dim
-        x = self.conv_layer(x) # batch_size x num_filters x n_seq x 1
-        # scalar product between x[1] items and its neighbors
-        # x = (x[:, 1::2, :] * x[:,  ::2, :])
-        x = x.squeeze(-1) # batch_size x num_filters x n_seq
-        for layer in self.layers_cnn:
-            x = layer(x)
-            x = nn.functional.relu(x)            
-            # print(x.shape)
-        x = x.view(x.size(0), -1)
-        x = nn.functional.relu(x)
-        x = self.first_layer(x)
-        for layer in self.layers:
-            x = nn.functional.relu(x)
-            x = layer(x)
-
-        x = nn.functional.relu(x)
-        x = self.last_layer(x)
-        return x
-
 class ScaleupEmbedding(nn.Module):
     """
     Learnable embedding from seq_len x input_dim to (seq_len/patch_size) x out_dim
@@ -430,7 +352,7 @@ class TransformerEncoder(nn.Module):
 
 class TransformerEncoderFCN(nn.Module):
     """
-        Transformer encoder module for classification with only one self-attention layer
+        One layer transformer encoder plus deep FCN
     """
     def __init__(self, d_model, num_layers, nhead, dim_feedforward, scaleup_dim, embedding_type, pos_encoder_type, dropout=0.1, ):
         super(TransformerEncoderFCN, self).__init__()
@@ -458,8 +380,6 @@ class TransformerEncoderFCN(nn.Module):
         
         self.classifier = nn.Linear(d_model, 1)
 
-
-
     def forward(self, src, src_mask=None):
         src = self.embedding(src)
         src = src.permute(1,0,2)
@@ -480,6 +400,7 @@ class TransformerEncoderFCN(nn.Module):
 
 
 class StackedRNN(nn.Module):
+    """A stacked RNN model."""
     def __init__(self, input_size, hidden_size, num_layers, output_size):
         super(StackedRNN, self).__init__()
         self.hidden_size = hidden_size
@@ -502,4 +423,83 @@ class StackedRNN(nn.Module):
         # Index hidden state of the last time step
         out = self.fc(out[:, -1, :])
         return out
+
+# class CNNdeep(nn.Module):
+#     """An 1D Convulational Neural Network."""
+#     def __init__(self,
+#                  embed_dim=8*20*5,
+#                  num_filters=20*5,
+#                  n_hidden_neurons=100,
+#                  n_hidden_layers=3,
+#                  n_dim = 4,
+#                  dropout=0.1):
+#         """
+#         The constructor for CNN class.
+
+#         Args:
+#             vocab_size (int): Need to be specified when not pretrained word
+#                 embeddings are not used.
+#             embed_dim (int): Dimension of word vectors. Need to be specified
+#                 when pretrained word embeddings are not used. Default: 300
+#             filter_sizes (List[int]): List of filter sizes. Default: [3, 4, 5]
+#             num_filters (List[int]): List of number of filters, has the same
+#                 length as `filter_sizes`. Default: [100, 100, 100]
+#             n_classes (int): Number of classes. Default: 2
+#             dropout (float): Dropout rate. Default: 0.5
+#         """
+
+#         super(CNNdeep, self).__init__()
+#         self.embed_dim = embed_dim
+#         self.num_filters = num_filters
+#         # Conv layer 
+#         self.conv_layer = nn.Conv2d(in_channels=1,
+#                       out_channels=num_filters,
+#                       kernel_size=(3,3),
+#                       stride = 1,
+#                       padding=1)
+        
+#         self.layers_cnn = nn.ModuleList([nn.Conv2d(in_channels=num_filters,
+#                       out_channels=num_filters,
+#                       kernel_size=(3,3),
+#                       stride = 1,
+#                       padding=1) for _ in range(2)])
+        
+#         # self.first_layer = nn.Linear(embed_dim, n_hidden_neurons)
+#         self.first_layer = nn.Linear(16*5*num_filters, n_hidden_neurons)
+
+#         # Fc layers
+#         self.layers = nn.ModuleList([nn.Linear(n_hidden_neurons, n_hidden_neurons) for _ in range(2)])  
+        
+#         self.last_layer = nn.Linear(n_hidden_neurons, 1)
+
+
+#     def forward(self, x: torch.Tensor):
+#         """Perform a forward pass through the network.
+
+#         Args:
+#             x (torch.Tensor): A tensor of token ids with shape
+#                 (batch_size, n_seq, n_dim)
+
+#         Returns:
+            
+#         """
+#         x = x.unsqueeze(1) # batch_size x 1 x n_seq x n_dim
+#         x = self.conv_layer(x) # batch_size x num_filters x n_seq x 1
+#         # scalar product between x[1] items and its neighbors
+#         # x = (x[:, 1::2, :] * x[:,  ::2, :])
+#         x = x.squeeze(-1) # batch_size x num_filters x n_seq
+#         for layer in self.layers_cnn:
+#             x = layer(x)
+#             x = nn.functional.relu(x)            
+#             # print(x.shape)
+#         x = x.view(x.size(0), -1)
+#         x = nn.functional.relu(x)
+#         x = self.first_layer(x)
+#         for layer in self.layers:
+#             x = nn.functional.relu(x)
+#             x = layer(x)
+
+#         x = nn.functional.relu(x)
+#         x = self.last_layer(x)
+#         return x
 

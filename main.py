@@ -1,10 +1,9 @@
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn as nn
-from models import MLP, TransformerEncoder, StackedRNN, MLPMixer, CNN, TransformerEncoderFCN, MLPMixerFCN, CNNdeep
-from data_generator import NoisyLinearRegression, NoisyLinearRegression_trf
+from models import MLP, TransformerEncoder, StackedRNN, MLPMixer, CNN, TransformerEncoderFCN, MLPMixerFCN
+from data_generator import NoisyLinearRegression_trf
 import argparse
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Noisy Linear Regression Training Script")
@@ -92,26 +91,14 @@ def main():
                     n_hidden_layers=args.n_hidden_layers,
                     n_dim=args.n_dims,
                     dropout=args.dropout)
-    elif args.network == "cnndeep":
-        model = CNNdeep(embed_dim=args.n_points * args.dim_feedforward,
-                    num_filters=args.dim_feedforward,
-                    n_hidden_neurons=args.n_hidden_neurons,
-                    n_hidden_layers=args.n_hidden_layers,
-                    n_dim=args.n_dims,
-                    dropout=args.dropout)
     else:
         raise NotImplementedError
-
 
     print(f"Number of parameters: {sum(p.numel() for p in model.parameters())}")
     model.to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
     loss_fn = nn.MSELoss()
-
-    # lr_scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=10000, eta_min=0.0, last_epoch=-1)
-
 
     writer = SummaryWriter(log_dir=f"testtest/network_{args.network}_n_tasks_{args.n_tasks}_n_dims_{args.n_dims}_n_points_{args.n_points}_n_hidden_layers_{args.n_hidden_layers}_n_hidden_neurons_{args.n_hidden_neurons}_dim_feedforward_{args.dim_feedforward}_lr_{args.lr}_batch_size_{args.batch_size}_seed_{args.data_seed}_max_iterations_{args.max_iterations}")
 
@@ -128,20 +115,6 @@ def main():
     noise_scale=args.noise_scale,
     dtype=torch.float32,)
     noisyLinearRegression.__post_init__()
-
-    newtasks = NoisyLinearRegression_trf(
-        n_tasks=args.n_tasks,
-        n_dims=args.n_dims,
-        n_points=args.n_points,
-        batch_size=args.batch_size,
-        data_seed=args.data_seed - args.max_iterations,
-        task_seed=args.task_seed - args.max_iterations,
-        noise_seed=args.noise_seed - args.max_iterations,
-        data_scale=args.data_scale,
-        task_scale=args.task_scale,
-        noise_scale=args.noise_scale,
-        dtype=torch.float32,)
-    newtasks.__post_init__()
 
     for step in range(args.max_iterations):
         data, targets = noisyLinearRegression.sample_batch(step)
@@ -161,27 +134,5 @@ def main():
             print(f"Step {step} | Train Loss {sum(loss_total)/len(loss_total)}")
             writer.add_scalar("Loss/train", sum(loss_total)/len(loss_total), step)
 
-
-        # lr_scheduler.step()
-        # if step % 500 == 0:
-        #     # evaluate on test set
-        #     model.eval()
-        #     data, targets = newtasks.sample_batch(step)
-        #     loss_total = []
-        #     i = args.n_points - 1
-        #     data[:, i*2+1:, :] = 0
-        #     targets_true = targets[:, i].unsqueeze(-1)
-        #     data_true, targets_true = data.to(device), targets_true.to(device)
-        #     optimizer.zero_grad()
-        #     outputs = model(data_true)
-        #     loss = loss_fn(outputs, targets_true)
-        #     loss_total += [loss.item()/args.n_dims]
-        #     model.train()
-        #     print(f"Step {step} | Test Loss {sum(loss_total)/len(loss_total)}")
-        #     writer.add_scalar("Loss/test", sum(loss_total)/len(loss_total), step)
-
-
 if __name__ == "__main__":
     main()
-
-# grun python main.py --n_tasks 16 --n_dims 8 --n_points 16 --batch_size 256 --data_seed 0 --task_seed 0 --noise_seed 0 --data_scale 1.0 --task_scale 1.0 --noise_scale 0.25 --dtype float32 --lr 0.001 --log_dir realruns/transformersmall --max_iterations 500000 --network transformer --input_dim 143 --output_dim 1 --n_hidden_layers 4 --n_hidden_neurons 128 --dim_feedforward 128 --dropout 0.1
